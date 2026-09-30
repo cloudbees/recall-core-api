@@ -86,6 +86,13 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'PDF export is currently disabled' }, { status: 403 });
     }
 
+    // FM gate — auditExport. The server half of the gate: the browser hides the
+    // menu item, and this makes the endpoint refuse anyone who calls it anyway.
+    if (format === 'xlsx' && !Rox.dynamicApi.isEnabled('recall.auditExport', false)) {
+      record(ROUTE, 403, 'recall.auditExport');
+      return NextResponse.json({ error: 'Spreadsheet export is currently disabled' }, { status: 403 });
+    }
+
     // Verify user owns this company
     const user = await db
       .selectFrom('users')
