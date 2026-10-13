@@ -23,44 +23,19 @@
 
 // @ts-ignore — rox-node v6, externalized singleton
 import Rox from 'rox-node';
-import { setFmCustomProperties } from '@recall/shared/fm';
-import db from '@recall/shared/db';
+import { userFmContext } from '@/lib/fm-context';
 
 export const MAINTENANCE_MESSAGE =
   'Recall Tracker is temporarily unavailable. Your data is safe — please try again shortly.';
 
 /**
- * Applies the signed-in user's targeting properties, then evaluates the kill switch.
+ * Evaluates the kill switch AS the signed-in user.
  *
- * The properties matter: a flag targeted at an email or a companySize evaluates false
- * against an SDK that has never been told who the user is, so the switch appears to do
- * nothing while looking perfectly healthy.
+ * The context matters: a flag targeted at an email or a companySize evaluates false
+ * against an SDK that has not been told who the user is, so the switch appears to do
+ * nothing while looking perfectly healthy. It is passed per evaluation rather than
+ * set globally — see lib/fm-context.ts.
  */
 export async function isServiceKilled(userId: string, email: string): Promise<boolean> {
-  const user = await db
-    .selectFrom('users')
-    .select(['companyId'])
-    .where('id', '=', userId)
-    .executeTakeFirst();
-
-  const company = user?.companyId
-    ? await db
-        .selectFrom('companies')
-        .select(['companyName', 'employeeCount', 'naicsCode', 'state'])
-        .where('id', '=', user.companyId)
-        .executeTakeFirst()
-    : undefined;
-
-  setFmCustomProperties({
-    userId,
-    email,
-    isLoggedIn: true,
-    companyId: user?.companyId ?? undefined,
-    companyName: company?.companyName ?? undefined,
-    employeeCount: company?.employeeCount ?? undefined,
-    naicsCode: company?.naicsCode ?? undefined,
-    state: company?.state ?? undefined,
-  });
-
-  return Rox.dynamicApi.isEnabled('recall.dashboardRedesign', false);
+  return Rox.dynamicApi.isEnabled('recall.dashboardRedesign', false, await userFmContext(userId, email));
 }
