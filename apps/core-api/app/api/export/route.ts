@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from 'next/server';
 // @ts-ignore — rox-node v6, externalized singleton
 import Rox from 'rox-node';
 import { auth } from '@/auth';
+import { userFmContext } from '@/lib/fm-context';
 import db from '@recall/shared/db';
 import {
   getRequirementsByCompany,
@@ -80,15 +81,19 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // Evaluated as this user, so a target group applies to them — see
+    // lib/fm-context.ts for why the context is passed rather than set globally.
+    const flagContext = await userFmContext(session.user.id, session.user.email ?? undefined);
+
     // FM gate — exportPdf (kill switch)
-    if (format === 'pdf' && !Rox.dynamicApi.isEnabled('recall.exportPdf', false)) {
+    if (format === 'pdf' && !Rox.dynamicApi.isEnabled('recall.exportPdf', false, flagContext)) {
       record(ROUTE, 403, 'recall.exportPdf');
       return NextResponse.json({ error: 'PDF export is currently disabled' }, { status: 403 });
     }
 
     // FM gate — auditExport. The server half of the gate: the browser hides the
     // menu item, and this makes the endpoint refuse anyone who calls it anyway.
-    if (format === 'xlsx' && !Rox.dynamicApi.isEnabled('recall.auditExport', false)) {
+    if (format === 'xlsx' && !Rox.dynamicApi.isEnabled('recall.auditExport', false, flagContext)) {
       record(ROUTE, 403, 'recall.auditExport');
       return NextResponse.json({ error: 'Spreadsheet export is currently disabled' }, { status: 403 });
     }

@@ -7,6 +7,7 @@ import Rox from 'rox-node';
 import { auth } from '@/auth';
 import db from '@recall/shared/db';
 import { record } from '@/lib/error-metrics';
+import { userFmContext, companyFmContext } from '@/lib/fm-context';
 
 const ROUTE = 'GET /api/calendar';
 /**
@@ -16,15 +17,6 @@ const ROUTE = 'GET /api/calendar';
  */
 export async function GET(request: NextRequest) {
   try {
-    // FM gate — calendarView (kill switch)
-    if (!Rox.dynamicApi.isEnabled('recall.calendarView', false)) {
-      record(ROUTE, 403, 'recall.calendarView');
-      return NextResponse.json(
-        { error: 'Calendar view is currently disabled' },
-        { status: 403 }
-      );
-    }
-
     const session = await auth();
     const { searchParams } = new URL(request.url);
     const token = searchParams.get('token');
@@ -51,6 +43,20 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(
         { error: 'Authentication required' },
         { status: 401 }
+      );
+    }
+
+    // FM gate — calendarView. Evaluated once the caller is known, so a target
+    // group (companySize, state, email) applies to them and not to whoever the
+    // server last evaluated. The browser reads the same flag to show the button.
+    const flagContext = session?.user?.id
+      ? await userFmContext(session.user.id, session.user.email ?? undefined)
+      : await companyFmContext(companyId);
+    if (!Rox.dynamicApi.isEnabled('recall.calendarView', false, flagContext)) {
+      record(ROUTE, 403, 'recall.calendarView');
+      return NextResponse.json(
+        { error: 'Calendar view is currently disabled' },
+        { status: 403 }
       );
     }
 
